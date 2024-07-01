@@ -1,57 +1,50 @@
+// src/App.js
+
 import { useState } from 'react';
-import { compressPayload } from './utils/gzipCompress';
+import axios from 'axios';
+import pako from 'pako';
+import { humanReadableSize } from './utils/helper';
 
 const App = () => {
   const [file, setFile] = useState(null);
-  const [response, setResponse] = useState('');
 
-  const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    if (!file) {
-      console.error('No file selected');
-      return;
-    }
+  const handleFileUpload = async () => {
+    if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async () => {
-      const fileData = new Uint8Array(reader.result);
-      const compressedPayload = compressPayload(fileData);
+    reader.onload = async (event) => {
+      const fileData = event.target.result;
+      const compressedData = pako.deflate(fileData, { to: 'string' });
 
-      if (!compressedPayload) {
-        return;
+      const formData = new FormData();
+      formData.append('file', new Blob([compressedData], { type: 'application/octet-stream' }), file.name);
+
+      console.log("Original data size:", humanReadableSize(fileData.byteLength));
+      console.log("Compressed data size:", humanReadableSize(compressedData.byteLength));
+
+      try {
+        const response = await axios.post('http://localhost:5000/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        console.log('File uploaded successfully', response.data);
+      } catch (error) {
+        console.error('Error uploading file', error);
       }
-
-      const response = await fetch('http://localhost:3000/api/endpoint', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'Content-Encoding': 'gzip',
-        },
-        body: compressedPayload,
-      });
-
-      const result = await response.json();
-      setResponse(result.message);
     };
 
     reader.readAsArrayBuffer(file);
   };
 
   return (
-    <div className="App">
-      <form onSubmit={handleSubmit}>
-        <input type="file" onChange={handleFileChange} />
-        <button type="submit">Upload File</button>
-      </form>
-      <div>
-        <h2>Response</h2>
-        <p>{response}</p>
-      </div>
+    <div>
+      <input type="file" onChange={handleFileChange} accept=".xls,.xlsx,.csv" />
+      <button onClick={handleFileUpload}>Upload</button>
     </div>
   );
 };
